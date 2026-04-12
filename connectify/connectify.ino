@@ -46,6 +46,7 @@ String artist_temp;
 String song;
 String song_temp;
 bool is_playing;
+bool is_animation_running;
 bool closed;
 const char* img_url;
 
@@ -71,30 +72,36 @@ void initWiFi() {
   tft.fillScreen(ST7735_BLACK);
 }
 
-void drawWave(int offset, uint16_t color) {
-  int waveHeight = 6;
-  int waveCenter = 70; 
+// No longer used replaced by updateWaveAnimation
+// void drawWave(int offset, uint16_t color) {
+//   int waveHeight = 6;
+//   int waveCenter = 70; 
   
-  for (int x = 0; x < SCREEN_WIDTH; x++) {
-    if(x==32){
-      x+=64; // skip artwork image
-    }
-    int y = waveCenter + sin((x + offset) * 0.1) * waveHeight;
+//   for (int x = 0; x < SCREEN_WIDTH; x++) {
+//     if(x==32){
+//       x+=64; // skip artwork image
+//     }
+//     int y = waveCenter + sin((x + offset) * 0.1) * waveHeight;
     
-    tft.drawPixel(x, y, color);
-    tft.drawPixel(x, y + 1, color);
-  }
-}
+//     tft.drawPixel(x, y, color);
+//     tft.drawPixel(x, y + 1, color);
+//   }
+// }
 
-void updateWaveAnimation(int offset){
+void updateWaveAnimation(int offset, bool clear_only = false){
   int waveAmplitude = 6;
   int waveCenter = 70; 
-  
+
   int i = 0; // array iterator
   for (int x = 0; x < SCREEN_WIDTH; x++) {
     if(x == (SCREEN_WIDTH-ARTWORK_SIZE)/2){
       x += ARTWORK_SIZE; // skip artwork image
     }
+
+    if(clear_only){
+      tft.drawPixel(x, lastAnimationFrame[i], BG_COLOR);
+    } 
+
     int y = waveCenter + sin((i + offset) * 0.1) * waveAmplitude;
     if(lastAnimationFrame[i] != y){
       tft.drawPixel(x, lastAnimationFrame[i], BG_COLOR);
@@ -319,16 +326,17 @@ void setup() {
 
 void loop() {
 
-  if (millis() - lastSpotifyCheck > 5000) {
+  if (millis() - lastSpotifyCheck > 10000) {
     spotify();
     lastSpotifyCheck = millis();
   }
   //spotify();
 
-  if(millis() - lastWaveUpdate > 1000/ANIMATION_FPS){
+  if(is_playing == true && (millis() - lastWaveUpdate > 1000/ANIMATION_FPS)){
     animationFrame += 1;
-    updateWaveAnimation(animationFrame);
+    updateWaveAnimation(animationFrame, false);
     lastWaveUpdate = millis();
+    is_animation_running = true;
   }
 
   // if (is_playing && (millis() - lastWaveUpdate > 500)) {
@@ -338,10 +346,12 @@ void loop() {
   //   lastWaveUpdate = millis();
   // }
 
-  // if(is_playing == false){
-  //   drawWave(animationFrame, ST7735_BLACK);
-  //   tft.drawLine(0, 70, 128, 70, ST7735_WHITE);
-  // }
+  if(is_playing == false && is_animation_running == true){
+    updateWaveAnimation(animationFrame, true);
+    tft.drawLine(0, 70, (SCREEN_WIDTH-ARTWORK_SIZE)/2, 70, ST7735_WHITE);
+    tft.drawLine(SCREEN_WIDTH-(ARTWORK_SIZE/2), 70, SCREEN_WIDTH, 70, ST7735_WHITE);
+    is_animation_running = false;
+  }
 
   int x_cursor;
   int y_cursor;
