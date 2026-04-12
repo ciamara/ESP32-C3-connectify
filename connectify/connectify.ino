@@ -17,6 +17,16 @@
 #define CS    5
 #define BL    4
 
+// Screen size in pixels
+#define SCREEN_WIDTH 128
+#define SCREEN_HEIGHT 160
+
+#define ANIMATION_FPS 30
+#define ARTWORK_SIZE 64
+#define BG_COLOR ST7735_BLACK
+#define TEXT_COLOR ST7735_WHITE
+
+
 //#define WIFI_SSID = ;
 //#define WIFI_PASSWORD = ;
 
@@ -40,6 +50,7 @@ bool closed;
 const char* img_url;
 
 int animationFrame = 0;
+int lastAnimationFrame[64];
 unsigned long lastSpotifyCheck = 0;
 unsigned long lastWaveUpdate = 0;
 
@@ -64,11 +75,32 @@ void drawWave(int offset, uint16_t color) {
   int waveHeight = 6;
   int waveCenter = 70; 
   
-  for (int x = 0; x < 128; x++) {
+  for (int x = 0; x < SCREEN_WIDTH; x++) {
+    if(x==32){
+      x+=64; // skip artwork image
+    }
     int y = waveCenter + sin((x + offset) * 0.1) * waveHeight;
     
     tft.drawPixel(x, y, color);
     tft.drawPixel(x, y + 1, color);
+  }
+}
+
+void updateWaveAnimation(int offset){
+  int waveAmplitude = 6;
+  int waveCenter = 70; 
+  
+  int i = 0; // array iterator
+  for (int x = 0; x < SCREEN_WIDTH; x++) {
+    if(x == (SCREEN_WIDTH-ARTWORK_SIZE)/2){
+      x += ARTWORK_SIZE; // skip artwork image
+    }
+    int y = waveCenter + sin((x + offset) * 0.1) * waveAmplitude;
+    if(lastAnimationFrame[i] != y){
+      tft.drawPixel(x, lastAnimationFrame[i], BG_COLOR);
+      tft.drawPixel(x, y, TEXT_COLOR);
+      lastAnimationFrame[i++] = y;
+    }
   }
 }
 
@@ -291,6 +323,12 @@ void loop() {
     lastSpotifyCheck = millis();
   }
   //spotify();
+
+  if(millis() - lastWaveUpdate > 1000/ANIMATION_FPS){
+    animationFrame += 1;
+    updateWaveAnimation(animationFrame);
+    lastWaveUpdate = millis();
+  }
 
   // if (is_playing && (millis() - lastWaveUpdate > 500)) {
   //   drawWave(animationFrame, ST7735_BLACK);
