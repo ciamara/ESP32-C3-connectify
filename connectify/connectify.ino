@@ -8,6 +8,7 @@
 #include <SPI.h>
 #include <TJpg_Decoder.h>
 #include "config.h"
+#include <Fonts/FreeSans9pt7b.h>
 
 #define MOSI  10
 #define SCK   8
@@ -34,7 +35,13 @@ String artist;
 String artist_temp;
 String song;
 String song_temp;
+bool is_playing;
+bool closed;
 const char* img_url;
+
+int animationFrame = 0;
+unsigned long lastSpotifyCheck = 0;
+unsigned long lastWaveUpdate = 0;
 
 char buffer[5020];
 
@@ -51,6 +58,18 @@ void initWiFi() {
     delay(1000);
   }
   tft.fillScreen(ST7735_BLACK);
+}
+
+void drawWave(int offset, uint16_t color) {
+  int waveHeight = 6;
+  int waveCenter = 70; 
+  
+  for (int x = 0; x < 128; x++) {
+    int y = waveCenter + sin((x + offset) * 0.1) * waveHeight;
+    
+    tft.drawPixel(x, y, color);
+    tft.drawPixel(x, y + 1, color);
+  }
 }
 
 void spotify() {
@@ -134,6 +153,10 @@ void spotify() {
   //Serial.print("dec_response_len: ");
   //Serial.println(dec_response_len);
 
+  if (dec_response_len == 204){
+    closed = true;
+  }
+
   read_len = (dec_response_len > 0 && dec_response_len < sizeof(buffer)) ? dec_response_len : sizeof(buffer) - 1;
   response_len = esp_http_client_read(client, buffer, read_len);
   //Serial.print("response_len: ");
@@ -142,13 +165,17 @@ void spotify() {
   Serial.println(buffer);
   
   if(response_len > 0){
+    closed = false;
     buffer[response_len] = '\0';
-    JsonDocument doc, doc1, doc2, doc3;
+    JsonDocument doc, doc1, doc2, doc3, doc4;
     deserializeJson(doc, buffer);
 
     String item = doc["item"];
+    String device = doc["item"];
     deserializeJson(doc1, item);
+    deserializeJson(doc4, device);
     artist_temp = doc1["artists"][0]["name"].as<String>();
+    is_playing = doc["is_playing"].as<bool>();
     Serial.println(artist_temp);
 
     song_temp = doc["item"]["name"].as<String>();
@@ -168,6 +195,9 @@ void spotify() {
     String str_img_url = doc3["url"];
     img_url = str_img_url.c_str();
     Serial.println(img_url);
+  }
+  else{
+    closed = true;
   }
 
   esp_http_client_close(client);
@@ -256,7 +286,23 @@ void setup() {
 
 void loop() {
 
-  spotify();
+  if (millis() - lastSpotifyCheck > 5000) {
+    spotify();
+    lastSpotifyCheck = millis();
+  }
+  //spotify();
+
+  // if (is_playing && (millis() - lastWaveUpdate > 500)) {
+  //   drawWave(animationFrame, ST7735_BLACK);
+  //   animationFrame += 4;
+  //   drawWave(animationFrame, ST7735_WHITE);
+  //   lastWaveUpdate = millis();
+  // }
+
+  // if(is_playing == false){
+  //   drawWave(animationFrame, ST7735_BLACK);
+  //   tft.drawLine(0, 70, 128, 70, ST7735_WHITE);
+  // }
 
   int x_cursor;
   int y_cursor;
@@ -264,6 +310,7 @@ void loop() {
 
   if (refresh == true){
     //tft.fillScreen(ST7735_BLACK);
+
     get_and_draw_cover();
     
     tft.setTextColor(ST7735_BLACK);
@@ -303,6 +350,39 @@ void loop() {
 
     refresh = false;
   }
+
+  // tft.setCursor(15, 10);
+  // if (is_playing){
+  //   tft.setTextColor(ST7735_BLACK);
+  //   tft.print("pookie paused");
+  //   tft.setCursor(15, 10);
+  //   tft.print("app closed");
+  //   tft.setCursor(15, 10);
+  //   tft.setTextColor(ST7735_WHITE);
+  //   tft.print("pookie's playing");
+  // }
+  // else{
+  //   tft.setTextColor(ST7735_BLACK);
+  //   tft.print("pookie's playing");
+  //   tft.setCursor(15, 10);
+  //   tft.print("app closed");
+  //   tft.setCursor(15, 10);
+  //   tft.setTextColor(ST7735_WHITE);
+  //   tft.print("pookie paused");
+  // }
+  // if(closed){
+  //   tft.setTextColor(ST7735_BLACK);
+  //   tft.setCursor(15, 10);
+  //   tft.print("pookie's playing");
+  //   tft.setCursor(15, 10);
+  //   tft.print("pookie paused");
+  //   tft.setTextColor(ST7735_WHITE);
+  //   tft.setCursor(15, 10);
+  //   tft.print("app closed");
+  // }
+
+  tft.setCursor(15, 10);
+  tft.print("pookie's playing");
   
   //todo writing each word seperately (maybe function) checking if it fits then printing it, if not go to new line (edge case 1 = humongous word -> solution: just slice it)
 
@@ -334,5 +414,5 @@ void loop() {
   // tft.setCursor(max(128/2 - int(artist.length())*5/2, 5), 140);
   // tft.println(artist);
 
-  delay(10000);
+  //delay(10000);
 }
