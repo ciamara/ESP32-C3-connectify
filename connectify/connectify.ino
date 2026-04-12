@@ -95,12 +95,13 @@ void updateWaveAnimation(int offset){
     if(x == (SCREEN_WIDTH-ARTWORK_SIZE)/2){
       x += ARTWORK_SIZE; // skip artwork image
     }
-    int y = waveCenter + sin((x + offset) * 0.1) * waveAmplitude;
+    int y = waveCenter + sin((i + offset) * 0.1) * waveAmplitude;
     if(lastAnimationFrame[i] != y){
       tft.drawPixel(x, lastAnimationFrame[i], BG_COLOR);
       tft.drawPixel(x, y, TEXT_COLOR);
-      lastAnimationFrame[i++] = y;
+      lastAnimationFrame[i] = y;
     }
+    i+=1;
   }
 }
 
