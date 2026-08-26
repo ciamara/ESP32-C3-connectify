@@ -40,14 +40,19 @@ Adafruit_ST7735 tft = Adafruit_ST7735(tftSPI, CS, DC, RST);
 const char* access_token_url = "https://accounts.spotify.com/api/token";
 
 bool refresh = false;
+bool refresh_state = false;
+bool refresh_play_state = false;
+
 
 String artist;
 String artist_temp;
 String song;
 String song_temp;
-bool is_playing;
+bool is_playing = false;
+bool is_playing_changed = false;
 bool is_animation_running;
 bool closed;
+bool app_closed_changed = false;
 const char* img_url;
 
 int animationFrame = 0;
@@ -101,12 +106,13 @@ void updateWaveAnimation(int offset, bool clear_only = false){
     if(clear_only){
       tft.drawPixel(x, lastAnimationFrame[i], BG_COLOR);
     } 
-
-    int y = waveCenter + sin((i + offset) * 0.1) * waveAmplitude;
-    if(lastAnimationFrame[i] != y){
-      tft.drawPixel(x, lastAnimationFrame[i], BG_COLOR);
-      tft.drawPixel(x, y, TEXT_COLOR);
-      lastAnimationFrame[i] = y;
+    else{
+      int y = waveCenter + sin((i + offset) * 0.1) * waveAmplitude;
+      if(lastAnimationFrame[i] != y){
+        tft.drawPixel(x, lastAnimationFrame[i], BG_COLOR);
+        tft.drawPixel(x, y, TEXT_COLOR);
+        lastAnimationFrame[i] = y;
+      }
     }
     i+=1;
   }
@@ -317,6 +323,8 @@ void setup() {
   
   tft.fillScreen(ST7735_BLACK);
 
+  is_animation_running = true;
+
   // tft.println(" |\\__/,|   (`\\");
   // tft.println(" |_ _  |.--.) )");
   // tft.println(" ( T   )     /");
@@ -332,7 +340,18 @@ void loop() {
   }
   //spotify();
 
-  if(is_playing == true && (millis() - lastWaveUpdate > 1000/ANIMATION_FPS)){
+  if(is_playing != is_playing_changed){
+    refresh_play_state = true;
+    is_playing_changed = is_playing;
+  }
+
+  if(is_playing && refresh_play_state){
+    tft.drawLine(0, 70, (SCREEN_WIDTH-ARTWORK_SIZE)/2, 70, BG_COLOR);
+    tft.drawLine(SCREEN_WIDTH-(ARTWORK_SIZE/2), 70, SCREEN_WIDTH, 70, BG_COLOR);
+    refresh_play_state = false;
+  }
+
+  if(is_playing == true && (millis() - lastWaveUpdate > 1000/ANIMATION_FPS) && closed == false){
     animationFrame += 1;
     updateWaveAnimation(animationFrame, false);
     lastWaveUpdate = millis();
@@ -346,11 +365,16 @@ void loop() {
   //   lastWaveUpdate = millis();
   // }
 
-  if(is_playing == false && is_animation_running == true){
+  if(is_playing == false && is_animation_running == true && closed == false){
     updateWaveAnimation(animationFrame, true);
     tft.drawLine(0, 70, (SCREEN_WIDTH-ARTWORK_SIZE)/2, 70, ST7735_WHITE);
     tft.drawLine(SCREEN_WIDTH-(ARTWORK_SIZE/2), 70, SCREEN_WIDTH, 70, ST7735_WHITE);
     is_animation_running = false;
+  }
+
+  if(closed != app_closed_changed){
+    refresh_state = true;
+    app_closed_changed = closed;
   }
 
   int x_cursor;
@@ -400,6 +424,7 @@ void loop() {
     refresh = false;
   }
 
+  // flag checks
   // tft.setCursor(15, 10);
   // if (is_playing){
   //   tft.setTextColor(ST7735_BLACK);
@@ -429,39 +454,50 @@ void loop() {
   //   tft.setCursor(15, 10);
   //   tft.print("app closed");
   // }
-
-  tft.setCursor(15, 10);
-  tft.print("pookie's playing");
   
   //todo writing each word seperately (maybe function) checking if it fits then printing it, if not go to new line (edge case 1 = humongous word -> solution: just slice it)
+  if (closed && refresh_state){
+    // kittyy animation
+    tft.fillScreen(ST7735_BLACK);
 
-  x_cursor = max(128/2 - int(song.length())*6/2, 6);
-  y_cursor = 110;
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(17, 69);
+    tft.print("pookie's eeping");
 
-  for(int j = 0; j < ceil(float(song.length())/symbols_per_line); j++){
-    for(int i = 0; i < symbols_per_line; i++){
-    tft.setCursor(x_cursor + i*6, y_cursor + j*10);
-    tft.print((char)song[i + j*symbols_per_line]);
-    }
-    x_cursor = max(128/2 - int(song.length() - symbols_per_line*(j+1))*6/2, 6);
+    refresh_state = false;
   }
+  if (!closed && refresh_state){
+    tft.setTextColor(ST7735_BLACK);
+    tft.setCursor(17, 69);
+    tft.print("pookie's eeping");
+    refresh_state = false;
+    refresh = true;
+  }
+  if (!closed){
+    tft.setTextColor(ST7735_WHITE);
+    tft.setCursor(15, 10);
+    tft.print("pookie's playing");
+
+    x_cursor = max(128/2 - int(song.length())*6/2, 6);
+    y_cursor = 110;
+
+    for(int j = 0; j < ceil(float(song.length())/symbols_per_line); j++){
+      for(int i = 0; i < symbols_per_line; i++){
+        tft.setCursor(x_cursor + i*6, y_cursor + j*10);
+        tft.print((char)song[i + j*symbols_per_line]);
+      }
+      x_cursor = max(128/2 - int(song.length() - symbols_per_line*(j+1))*6/2, 6);
+    }
   
-  x_cursor = max(128/2 - int(artist.length())*6/2, 6);
-  y_cursor = 140;
+    x_cursor = max(128/2 - int(artist.length())*6/2, 6);
+    y_cursor = 140;
 
-  for(int j = 0; j < ceil(float(artist.length())/symbols_per_line); j++){
-    for(int i = 0; i < symbols_per_line; i++){
-    tft.setCursor(x_cursor + i*6, y_cursor + j*10);
-    tft.print((char)artist[i + j*symbols_per_line]);
+    for(int j = 0; j < ceil(float(artist.length())/symbols_per_line); j++){
+      for(int i = 0; i < symbols_per_line; i++){
+        tft.setCursor(x_cursor + i*6, y_cursor + j*10);
+        tft.print((char)artist[i + j*symbols_per_line]);
+      }
+      x_cursor = max(128/2 - int(artist.length() - symbols_per_line*(j+1))*6/2, 6);
     }
-    x_cursor = max(128/2 - int(artist.length() - symbols_per_line*(j+1))*6/2, 6);
   }
-
-  // old
-  // tft.setCursor(max(128/2 - int(song.length())*5/2, 5), 120);
-  // tft.println(song);
-  // tft.setCursor(max(128/2 - int(artist.length())*5/2, 5), 140);
-  // tft.println(artist);
-
-  //delay(10000);
 }
