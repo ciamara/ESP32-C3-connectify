@@ -1,6 +1,0 @@
-CLIENT_ID = ""
-CLIENT_SECRET = ""
-
-IP = "127.0.0.1"
-PORT = "8888"
-REDIRECT_URI = f"http://{IP}:{PORT}"
