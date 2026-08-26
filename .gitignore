@@ -2,3 +2,4 @@
 *.cache_t
 
 connectify/config.h
+prototype/config.py
