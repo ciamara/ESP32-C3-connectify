@@ -5,10 +5,10 @@ import requests
 import urllib
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
-needs_reauthorization = True
+needs_reauthorization = False
 AUTH_CODE = None
 ACCESS_TOKEN = None
-REFRESH_TOKEN = None
+REFRESH_TOKEN = "AQCuwc0OWxU3ztL4OZErPuXD1p2wbBYYNf5Nj7IugRVTJpAU6lm5xFxgPwoetUAS-F7Zgm6vz664bHdwrd_MDrQbc4h6q4NDcgorcKqyFxlpQRWznbMnoOR9ot2_KeMDZMM"
 
 ### HTTP Server function capturing authorization
 class SpotifyCallbackHandler(BaseHTTPRequestHandler):
@@ -119,6 +119,7 @@ def getPlaybackState():
                 print("Playback not available or active.")
         if r.status_code == 401:
                 print("Bad or expired token. This can happen if the user revoked a token or the access token has expired. You should re-authenticate the user.")
+                needs_reauthorization = True
         if r.status_code == 403:
                 print("Bad OAuth request (wrong consumer key, bad nonce, expired timestamp...). Unfortunately, re-authenticating the user won't help here.")
         if r.status_code == 429:
@@ -159,6 +160,7 @@ def refreshTokenRequest():
 ### Main Loop
 if __name__ == "__main__":
         print("BMO - ESP32-C3 Connectify prototype")
+        last_refresh_time = 0
         while True:
                 if needs_reauthorization:
                         requestUserAuthorization()
