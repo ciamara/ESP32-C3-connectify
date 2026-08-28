@@ -8,7 +8,7 @@ from http.server import BaseHTTPRequestHandler, HTTPServer
 needs_reauthorization = False
 AUTH_CODE = None
 ACCESS_TOKEN = None
-REFRESH_TOKEN = "AQCuwc0OWxU3ztL4OZErPuXD1p2wbBYYNf5Nj7IugRVTJpAU6lm5xFxgPwoetUAS-F7Zgm6vz664bHdwrd_MDrQbc4h6q4NDcgorcKqyFxlpQRWznbMnoOR9ot2_KeMDZMM"
+REFRESH_TOKEN = None
 
 ### HTTP Server function capturing authorization
 class SpotifyCallbackHandler(BaseHTTPRequestHandler):
