@@ -1,3 +1,7 @@
+/*
+This file is currently not in use.
+*/
+
 #include <WiFi.h>
 #include "esp_http_client.h"
 #include "esp_crt_bundle.h"
