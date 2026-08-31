@@ -6,9 +6,6 @@ import urllib
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 needs_reauthorization = False
-AUTH_CODE = None
-ACCESS_TOKEN = None
-REFRESH_TOKEN = None
 
 ### HTTP Server function capturing authorization
 class SpotifyCallbackHandler(BaseHTTPRequestHandler):
@@ -75,15 +72,17 @@ def requestAnAccessToken():
         #print(f"r.text: {r.text}")
         print(f"r.status_code: {r.status_code}")
 
-        print(f"r.access_token: {r.json()['access_token']}")
-        print(f"r.token_type: {r.json()['token_type']}")
-        print(f"r.scope: {r.json()['scope']}")
-        print(f"r.expires_in: {r.json()['expires_in']}")
-        print(f"r.refresh_token: {r.json()['refresh_token']}")
+        if r.status_code == 200:
+                print(f"r.access_token: {r.json()['access_token']}")
+                print(f"r.token_type: {r.json()['token_type']}")
+                print(f"r.scope: {r.json()['scope']}")
+                print(f"r.expires_in: {r.json()['expires_in']}")
+                print(f"r.refresh_token: {r.json()['refresh_token']}")
 
-        ACCESS_TOKEN = r.json()['access_token']
-        REFRESH_TOKEN = r.json()['refresh_token']
-        needs_reauthorization = False
+                ACCESS_TOKEN = r.json()['access_token']
+                REFRESH_TOKEN = r.json()['refresh_token']
+                needs_reauthorization = False
+        
 
 
 def getPlaybackState():
