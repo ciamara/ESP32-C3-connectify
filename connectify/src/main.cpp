@@ -19,6 +19,26 @@ bool needs_reauthorization = false;
 int last_token_refresh_time = 0;
 int last_playback_refresh_time = 0;
 
+struct playback_t {
+  bool is_playing = false;
+  String currently_playing_type = "";
+  String device_type = "";
+  long progress_ms = 0;
+  long duration_ms = 0;
+
+  // Track
+  String track_title = "";
+  String track_artist = "";
+  String track_album = "";
+  String track_album_img = "";
+  
+  // Episode
+  String episode_name = "";
+  String episode_img = "";
+};
+
+playback_t current_playback;
+
 void connectToWiFi() {
   Serial.println("\n### Establishing WiFi connection");
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
@@ -337,21 +357,42 @@ void getPlaybackState(){
   JsonDocument json;
   deserializeJson(json, response);
 
+  current_playback.is_playing = false; // default playback state
+
   if(httpResponseCode == 200) {
-    Serial.println("Device Type: " + json["device"]["type"].as<String>());
-    Serial.println("Is Playing: " + String(json["is_playing"].as<bool>()));
-    Serial.println("Currently Playing Type: " + json["currently_playing_type"].as<String>());
+    // Serial.println("Is Playing: " + String(json["is_playing"].as<bool>()));
+    // Serial.println("Currently Playing Type: " + json["currently_playing_type"].as<String>());
+    // Serial.println("Device Type: " + json["device"]["type"].as<String>());
+
+    current_playback.is_playing = json["is_playing"].as<bool>();
+    current_playback.currently_playing_type = json["currently_playing_type"].as<String>();
+    current_playback.device_type = json["device"]["type"].as<String>();
 
     if (json["item"] && json["currently_playing_type"] == "track") {
-      Serial.println("Track Name: " + json["item"]["name"].as<String>());
-      Serial.println("Album Name: " + json["item"]["album"]["name"].as<String>());
-      Serial.println("Album Image URL: " + json["item"]["album"]["images"][2]["url"].as<String>());
-      Serial.println("Artist Name: " + json["item"]["artists"][0]["name"].as<String>());
-      Serial.println("Track Progress (ms): " + String(json["progress_ms"].as<long>()));
-      Serial.println("Track Duration (ms): " + String(json["item"]["duration_ms"].as<long>()));
+      // Serial.println("Track Name: " + json["item"]["name"].as<String>());
+      // Serial.println("Album Name: " + json["item"]["album"]["name"].as<String>());
+      // Serial.println("Album Image URL: " + json["item"]["album"]["images"][2]["url"].as<String>());
+      // Serial.println("Artist Name: " + json["item"]["artists"][0]["name"].as<String>());
+      // Serial.println("Progress (ms): " + String(json["progress_ms"].as<long>()));
+      // Serial.println("Duration (ms): " + String(json["item"]["duration_ms"].as<long>()));
+
+      current_playback.track_title = json["item"]["name"].as<String>();
+      current_playback.track_album = json["item"]["album"]["name"].as<String>();
+      current_playback.track_album_img = json["item"]["album"]["images"][2]["url"].as<String>();
+      current_playback.track_artist = json["item"]["artists"][0]["name"].as<String>();
+      current_playback.progress_ms = json["progress_ms"].as<long>();
+      current_playback.duration_ms = json["item"]["duration_ms"].as<long>();
+
     } else if (json["item"] && json["currently_playing_type"] == "episode") {
-      Serial.println("Podcast Name: " + json["item"]["show"]["name"].as<String>());
-      Serial.println("Podcast Image URL: " + json["item"]["show"]["images"][2]["url"].as<String>());
+      // Serial.println("Episode Name: " + json["item"]["show"]["name"].as<String>());
+      // Serial.println("Episode Image URL: " + json["item"]["show"]["images"][2]["url"].as<String>());
+      // Serial.println("Progress (ms): " + String(json["progress_ms"].as<long>()));
+      // Serial.println("Duration (ms): " + String(json["item"]["duration_ms"].as<long>()));
+
+      current_playback.episode_name = json["item"]["show"]["name"].as<String>();
+      current_playback.episode_img = json["item"]["show"]["images"][2]["url"].as<String>();
+      current_playback.progress_ms = json["progress_ms"].as<long>();
+      current_playback.duration_ms = json["item"]["duration_ms"].as<long>();
     }
     needs_reauthorization = false;
   } else if (httpResponseCode == 204) {
@@ -368,7 +409,7 @@ void getPlaybackState(){
   http.end();
 }
 
-void readSpotifyTokens(){
+void loadSpotifyTokens(){
   Preferences preferences;
 
   preferences.begin("spotify-tokens", true);
@@ -390,31 +431,79 @@ void saveSpotifyTokens(){
   preferences.end();
 }
 
+void printPlaybackState(){
+  /*
+  current_playback.is_playing
+  current_playback.currently_playing_type
+  current_playback.device_type
+  current_playback.progress_ms
+  current_playback.duration_ms
+
+  // Track
+  current_playback.track_title
+  current_playback.track_artist
+  current_playback.track_album
+  current_playback.track_album_img
+  
+  // Episode
+  current_playback.episode_name
+  current_playback.episode_img
+  */
+
+  Serial.println("\n### Printing Playback State");
+
+  if(!current_playback.is_playing){
+    Serial.println("Sleeping...");
+  }
+  else{
+    if(current_playback.currently_playing_type == "track"){
+      Serial.println("track_title: " + current_playback.track_title);
+      Serial.println("track_artist: " + current_playback.track_artist);
+      Serial.println("track_album: " + current_playback.track_album);
+      Serial.println("track_album_img: " + current_playback.track_album_img);
+    }
+    else if(current_playback.currently_playing_type == "episode"){
+      Serial.println("episode_name: " + current_playback.episode_name);
+      Serial.println("episode_img: " + current_playback.episode_img);
+    }
+    Serial.println("progress_ms: " + String(current_playback.progress_ms));
+    Serial.println("duration_ms: " + String(current_playback.duration_ms));
+
+    Serial.println("device_type: " + current_playback.device_type);
+  }
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
   connectToWiFi();
 
-  readSpotifyTokens();
+  loadSpotifyTokens();
 }
 
 void loop() {
   if (needs_reauthorization) {
-    requestUserAuthorization();
-    requestAnAccessToken();
-    saveSpotifyTokens();
+    refreshTokenRequest();
+    if(needs_reauthorization){
+      requestUserAuthorization();
+      requestAnAccessToken();
+      saveSpotifyTokens();
+    }
     last_token_refresh_time = millis();
   }
 
-  if (millis() - last_token_refresh_time > 1000 * 60 * 50) { 
+  if (millis() - last_token_refresh_time > 1000 * 60 * 30) { 
     refreshTokenRequest();
     last_token_refresh_time = millis();
   }
 
   if (millis() - last_playback_refresh_time > 1000 * 5) { 
     getPlaybackState();
+    printPlaybackState();
     last_playback_refresh_time = millis();
   }
+
+
 
 }
