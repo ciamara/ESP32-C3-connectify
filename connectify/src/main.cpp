@@ -11,13 +11,16 @@
 #include "config.h"
 // Saving variables to Flash memory
 #include <Preferences.h>
+// LCD
+#include <TFT_eSPI.h>
+#include <SPI.h>
 
 String AUTH_CODE;
 String ACCESS_TOKEN;
 String REFRESH_TOKEN;
-bool needs_reauthorization = false;
-int last_token_refresh_time = 0;
-int last_playback_refresh_time = 0;
+bool needs_reauthorization = true;
+unsigned long last_token_refresh_time = 0;
+unsigned long last_playback_refresh_time = 0;
 
 struct playback_t {
   bool is_playing = false;
@@ -38,6 +41,8 @@ struct playback_t {
 };
 
 playback_t current_playback;
+
+TFT_eSPI tft = TFT_eSPI();
 
 void connectToWiFi() {
   Serial.println("\n### Establishing WiFi connection");
@@ -281,13 +286,20 @@ void refreshTokenRequest(){
 
   Serial.println("HTTP Response code: " + String(httpResponseCode));
 
-  String response = http.getString();
-
-  JsonDocument json;
-  deserializeJson(json, response);
+  
   //Serial.println("Response JSON: " + json.as<String>());
 
+  while (httpResponseCode != 200 && httpResponseCode != 400) {
+    Serial.println("Error in HTTP request. Retrying...");
+    delay(1000);
+    httpResponseCode = http.POST(post_data);
+    Serial.println("HTTP Response code: " + String(httpResponseCode));
+  }
   if (httpResponseCode == 200) {
+    String response = http.getString();
+    JsonDocument json;
+    deserializeJson(json, response);
+
     ACCESS_TOKEN = json["access_token"].as<String>();
     Serial.println("Access Token: " + ACCESS_TOKEN);
     if (json["refresh_token"].is<String>()) {
@@ -352,14 +364,13 @@ void getPlaybackState(){
   int httpResponseCode = http.GET();
   Serial.println("HTTP Response code: " + String(httpResponseCode));
 
-  String response = http.getString();
-
-  JsonDocument json;
-  deserializeJson(json, response);
-
   current_playback.is_playing = false; // default playback state
 
   if(httpResponseCode == 200) {
+    String response = http.getString();
+    JsonDocument json;
+    deserializeJson(json, response);
+    
     // Serial.println("Is Playing: " + String(json["is_playing"].as<bool>()));
     // Serial.println("Currently Playing Type: " + json["currently_playing_type"].as<String>());
     // Serial.println("Device Type: " + json["device"]["type"].as<String>());
@@ -473,10 +484,25 @@ void printPlaybackState(){
   }
 }
 
+void tftInitialization(){
+  Serial.println("\n### Initializing TFT Display");
+  tft.begin();
+  tft.setRotation(0);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_GREEN, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("WiFi Connecting...",SCREEN_WIDTH/2, SCREEN_HEIGHT/2, 1);
+}
+
+void drawPlaybackState(){
+
+}
+
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
+  tftInitialization();
   connectToWiFi();
 
   loadSpotifyTokens();
@@ -503,7 +529,4 @@ void loop() {
     printPlaybackState();
     last_playback_refresh_time = millis();
   }
-
-
-
 }
