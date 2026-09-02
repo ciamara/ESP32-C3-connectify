@@ -14,6 +14,7 @@
 // LCD
 #include <TFT_eSPI.h>
 #include <SPI.h>
+#include <TJpg_Decoder.h>
 
 String AUTH_CODE;
 String ACCESS_TOKEN;
@@ -38,11 +39,107 @@ struct playback_t {
   // Episode
   String episode_name = "";
   String episode_img = "";
+
+  // Artworks
+  uint8_t* artwork_buffer = nullptr;
+  int artwork_length = 0;
 };
 
 playback_t current_playback;
 
+bool playback_changed = true;
+bool resume_pause_changed = true;
+
 TFT_eSPI tft = TFT_eSPI();
+
+
+// TFT Display Functions
+
+bool tft_output(int16_t x, int16_t y, uint16_t w, uint16_t h, uint16_t* bitmap) {
+  tft.pushImage(x, y, w, h, bitmap);
+  return 1;
+}
+
+void tftInitialization(){
+  Serial.println("\n### Initializing TFT Display");
+  tft.begin();
+  tft.setRotation(0);
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_ORANGE, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+  tft.drawString("Hello!",SCREEN_WIDTH/2, SCREEN_HEIGHT/2, 1);
+  tft.drawString("Connecting to WiFi",SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 8 + TEXT_MARGIN, 1);
+}
+
+void tjpgInitialization(){
+  Serial.println("\n### Initializing TJpg_Decoder");
+  TJpgDec.setJpgScale(0);
+  TJpgDec.setSwapBytes(true);
+  TJpgDec.setCallback(tft_output);
+}
+
+void drawPlaybackImage(){
+  if (!current_playback.is_playing) return;
+  if (current_playback.artwork_buffer != nullptr && current_playback.artwork_length > 0) {
+    TJpgDec.drawJpg(SCREEN_WIDTH/2-32, SCREEN_HEIGHT/2-48, current_playback.artwork_buffer, current_playback.artwork_length);
+  }
+}
+
+void drawPlaybackState(){
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM); // text is anchored to the middle center of the String
+
+  int title_y = SCREEN_HEIGHT/2 + 36;                    // track_title, episode_name
+  int artist_y = SCREEN_HEIGHT/2 + 36 + 8 + TEXT_MARGIN; // track_artist
+
+  tft.fillRect(0, title_y - 4, SCREEN_WIDTH, 16 + TEXT_MARGIN, TFT_BLACK);
+
+  if(!current_playback.is_playing){
+    tft.fillScreen(TFT_BLACK);
+    tft.drawString("Sleeping...", SCREEN_WIDTH/2, SCREEN_HEIGHT/2, 1);
+  }
+  else{
+    if(current_playback.currently_playing_type == "track"){
+      tft.drawString(current_playback.track_title, SCREEN_WIDTH/2, title_y, 1);
+      tft.drawString(current_playback.track_artist, SCREEN_WIDTH/2, artist_y, 1);
+    }
+    else if(current_playback.currently_playing_type == "episode"){
+      tft.drawString(current_playback.episode_name, SCREEN_WIDTH/2, title_y, 1);
+    }
+  }
+}
+
+void drawProgressBar(){
+  if(!current_playback.is_playing) return;
+
+  int progress_bar_y = SCREEN_HEIGHT/2 + 64; // track_artist
+  int progress_bar_width = current_playback.progress_ms * (SCREEN_WIDTH - 2 * SCREEN_PADDING) / current_playback.duration_ms; 
+
+  //clear_bar
+  tft.fillRect(SCREEN_PADDING, progress_bar_y - 2, SCREEN_WIDTH - 2 * SCREEN_PADDING, 5, TFT_BLACK);
+
+  //duration_bar 
+  tft.drawFastHLine(SCREEN_PADDING, progress_bar_y, SCREEN_WIDTH - 2 * SCREEN_PADDING, TFT_WHITE);
+  tft.drawFastVLine(SCREEN_PADDING, progress_bar_y - 2, 5, TFT_WHITE);
+  tft.drawFastVLine(SCREEN_WIDTH - SCREEN_PADDING, progress_bar_y - 2, 5, TFT_WHITE);
+
+  //progress_bar
+  tft.drawFastHLine(SCREEN_PADDING, progress_bar_y - 1, progress_bar_width, TFT_WHITE);
+  tft.drawFastHLine(SCREEN_PADDING, progress_bar_y + 1, progress_bar_width, TFT_WHITE);
+  tft.drawFastVLine(SCREEN_PADDING + progress_bar_width, progress_bar_y - 2, 5, TFT_WHITE);
+}
+
+void drawAuthorizationScreen(){
+  tft.fillScreen(TFT_BLACK);
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+
+  tft.drawString("Authorization", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 8 - TEXT_MARGIN, 1);
+  tft.drawString("Required", SCREEN_WIDTH/2, SCREEN_HEIGHT/2, 1);
+  tft.drawString("Check Serial Monitor", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 16, 1);
+}
+
+// WiFi Functions
 
 void connectToWiFi() {
   Serial.println("\n### Establishing WiFi connection");
@@ -50,7 +147,7 @@ void connectToWiFi() {
 
   while (WiFi.status() != WL_CONNECTED) {
     delay(1000);
-    Serial.printf("Connecting to WiFi...\n");
+    Serial.printf("Connecting to WiFi\n");
   }
   Serial.printf("Connected to WiFi\n");
   
@@ -60,6 +157,8 @@ void connectToWiFi() {
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
 }
+
+// Spotify API Functions
 
 void requestUserAuthorization(){
   /*
@@ -89,6 +188,8 @@ void requestUserAuthorization(){
   Serial.printf("Authorization URL: %s\n", url.c_str());
 
   Serial.println("After authorization, please enter the auth code from the redirect URL (the 'code' parameter) and press Enter:");
+
+  drawAuthorizationScreen();
 
   while (Serial.available() == 0) {
     delay(100); 
@@ -364,6 +465,7 @@ void getPlaybackState(){
   int httpResponseCode = http.GET();
   Serial.println("HTTP Response code: " + String(httpResponseCode));
 
+  bool prev_resume_pause = current_playback.is_playing;
   current_playback.is_playing = false; // default playback state
 
   if(httpResponseCode == 200) {
@@ -379,6 +481,11 @@ void getPlaybackState(){
     current_playback.currently_playing_type = json["currently_playing_type"].as<String>();
     current_playback.device_type = json["device"]["type"].as<String>();
 
+    bool curr_resume_pause = current_playback.is_playing;
+    if (prev_resume_pause != curr_resume_pause) {
+      resume_pause_changed = true;
+    }
+
     if (json["item"] && json["currently_playing_type"] == "track") {
       // Serial.println("Track Name: " + json["item"]["name"].as<String>());
       // Serial.println("Album Name: " + json["item"]["album"]["name"].as<String>());
@@ -387,6 +494,8 @@ void getPlaybackState(){
       // Serial.println("Progress (ms): " + String(json["progress_ms"].as<long>()));
       // Serial.println("Duration (ms): " + String(json["item"]["duration_ms"].as<long>()));
 
+      String artwork_prev = current_playback.track_album_img;
+
       current_playback.track_title = json["item"]["name"].as<String>();
       current_playback.track_album = json["item"]["album"]["name"].as<String>();
       current_playback.track_album_img = json["item"]["album"]["images"][2]["url"].as<String>();
@@ -394,16 +503,28 @@ void getPlaybackState(){
       current_playback.progress_ms = json["progress_ms"].as<long>();
       current_playback.duration_ms = json["item"]["duration_ms"].as<long>();
 
+      String artwork_curr = current_playback.track_album_img;
+      if (artwork_prev != artwork_curr) {
+        playback_changed = true;
+      }
+
     } else if (json["item"] && json["currently_playing_type"] == "episode") {
       // Serial.println("Episode Name: " + json["item"]["show"]["name"].as<String>());
       // Serial.println("Episode Image URL: " + json["item"]["show"]["images"][2]["url"].as<String>());
       // Serial.println("Progress (ms): " + String(json["progress_ms"].as<long>()));
       // Serial.println("Duration (ms): " + String(json["item"]["duration_ms"].as<long>()));
 
+      String artwork_prev = current_playback.episode_img;
+
       current_playback.episode_name = json["item"]["show"]["name"].as<String>();
       current_playback.episode_img = json["item"]["show"]["images"][2]["url"].as<String>();
       current_playback.progress_ms = json["progress_ms"].as<long>();
       current_playback.duration_ms = json["item"]["duration_ms"].as<long>();
+
+      String artwork_curr = current_playback.episode_img;
+      if (artwork_prev != artwork_curr) {
+        playback_changed = true;
+      }
     }
     needs_reauthorization = false;
   } else if (httpResponseCode == 204) {
@@ -419,6 +540,61 @@ void getPlaybackState(){
 
   http.end();
 }
+
+void fetchPlaybackImage() {
+  Serial.println("\n### Fetching Album Art");
+  if (current_playback.artwork_buffer != nullptr) {
+    free(current_playback.artwork_buffer);
+    current_playback.artwork_buffer = nullptr;
+    current_playback.artwork_length = 0;
+  }
+
+  String img_url = "";
+
+  if (current_playback.currently_playing_type == "episode") {
+    if (current_playback.episode_img == "") return;
+    img_url = current_playback.episode_img;
+  } else if (current_playback.currently_playing_type == "track") {
+    if (current_playback.track_album_img == "") return;
+    img_url = current_playback.track_album_img;
+  } 
+
+  if (img_url == "") return;
+
+  WiFiClientSecure client;
+  client.setInsecure();
+
+  HTTPClient http;
+  http.begin(client, img_url);
+
+  int httpResponseCode = http.GET();
+  Serial.println("HTTP Response code: " + String(httpResponseCode));
+
+  if (httpResponseCode == 200) {
+    current_playback.artwork_length = http.getSize();
+    
+    if (current_playback.artwork_length > 0) {
+      current_playback.artwork_buffer = (uint8_t*)malloc(current_playback.artwork_length);
+      
+      if (current_playback.artwork_buffer != nullptr) {
+        WiFiClient* stream = http.getStreamPtr();
+        int readBytes = 0;
+        
+        while (http.connected() && readBytes < current_playback.artwork_length) {
+          size_t size = stream->available();
+          if (size) {
+            int c = stream->readBytes(current_playback.artwork_buffer + readBytes, size);
+            readBytes += c;
+          }
+          delay(1);
+        }
+      }
+    }
+  }
+  http.end();
+}
+
+// Flash Memory Functions
 
 void loadSpotifyTokens(){
   Preferences preferences;
@@ -441,6 +617,8 @@ void saveSpotifyTokens(){
 
   preferences.end();
 }
+
+// Debug Functions
 
 void printPlaybackState(){
   /*
@@ -484,26 +662,16 @@ void printPlaybackState(){
   }
 }
 
-void tftInitialization(){
-  Serial.println("\n### Initializing TFT Display");
-  tft.begin();
-  tft.setRotation(0);
-  tft.fillScreen(TFT_BLACK);
-  tft.setTextColor(TFT_GREEN, TFT_BLACK);
-  tft.setTextDatum(MC_DATUM);
-  tft.drawString("WiFi Connecting...",SCREEN_WIDTH/2, SCREEN_HEIGHT/2, 1);
-}
-
-void drawPlaybackState(){
-
-}
+// Main Functions
 
 void setup() {
   Serial.begin(115200);
   delay(1000);
 
+  tjpgInitialization();
   tftInitialization();
   connectToWiFi();
+  tft.fillScreen(TFT_BLACK);
 
   loadSpotifyTokens();
 }
@@ -527,6 +695,17 @@ void loop() {
   if (millis() - last_playback_refresh_time > 1000 * 5) { 
     getPlaybackState();
     printPlaybackState();
+
+    if(playback_changed || resume_pause_changed){      
+      fetchPlaybackImage();
+      drawPlaybackImage();
+      drawPlaybackState();
+      
+      playback_changed = false;
+      resume_pause_changed = false;
+    } 
+    drawProgressBar();
+
     last_playback_refresh_time = millis();
   }
 }
