@@ -21,6 +21,7 @@ String ACCESS_TOKEN;
 String REFRESH_TOKEN;
 bool needs_reauthorization = true;
 unsigned long last_token_refresh_time = 0;
+unsigned long last_progress_refresh_time = 0;
 unsigned long last_playback_refresh_time = 0;
 
 struct playback_t {
@@ -109,11 +110,11 @@ void drawPlaybackState(){
   }
 }
 
-void drawProgressBar(){
+void drawProgressBar(long progress){
   if(!current_playback.is_playing) return;
 
   int progress_bar_y = SCREEN_HEIGHT/2 + 64; // track_artist
-  int progress_bar_width = current_playback.progress_ms * (SCREEN_WIDTH - 2 * SCREEN_PADDING) / current_playback.duration_ms; 
+  int progress_bar_width = progress * (SCREEN_WIDTH - 2 * SCREEN_PADDING) / current_playback.duration_ms; 
 
   //clear_bar
   tft.fillRect(SCREEN_PADDING, progress_bar_y - 2, SCREEN_WIDTH - 2 * SCREEN_PADDING, 5, TFT_BLACK);
@@ -672,7 +673,6 @@ void setup() {
   tftInitialization();
   connectToWiFi();
   tft.fillScreen(TFT_BLACK);
-
   loadSpotifyTokens();
 }
 
@@ -683,8 +683,15 @@ void loop() {
       requestUserAuthorization();
       requestAnAccessToken();
       saveSpotifyTokens();
+      tft.fillScreen(TFT_BLACK);
     }
     last_token_refresh_time = millis();
+  }
+
+  if (millis() - last_progress_refresh_time > 1000) { 
+    current_playback.progress_ms += 1000;
+    drawProgressBar(current_playback.progress_ms);
+    last_progress_refresh_time = millis();
   }
 
   if (millis() - last_token_refresh_time > 1000 * 60 * 30) { 
@@ -704,7 +711,7 @@ void loop() {
       playback_changed = false;
       resume_pause_changed = false;
     } 
-    drawProgressBar();
+    drawProgressBar(current_playback.progress_ms);
 
     last_playback_refresh_time = millis();
   }
