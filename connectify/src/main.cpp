@@ -152,9 +152,10 @@ void drawWiFiSignal(){
   /*
   WiFi Power Levels:
   (-60;+inf)- Good - Green
-  (-60:-70) - Fair - Orange
+  (-70;-60) - Fair - Orange
   (-inf;-70)- Weak - Red
   DISCONNECTED     - Dark Grey
+  OTHER            - White 
   */
 
   int wifi_symbol_size = 4;
@@ -163,9 +164,9 @@ void drawWiFiSignal(){
 
   if (WiFi.status() != WL_CONNECTED) {
     tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_DARKGREY);
-  } else if (wifi_power >= -60) {
+  } else if (-60 <= wifi_power) {
     tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_GREEN);
-  } else if (wifi_power >= -70) {
+  } else if (-70 <= wifi_power) {
     tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_ORANGE);
   } else if (wifi_power < -70) {
     tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_RED);
