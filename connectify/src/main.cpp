@@ -144,6 +144,8 @@ void drawAuthorizationScreen(){
 void drawWiFiSignal(){
   Serial.println("\n### Checking WiFi Signal Strength");
   
+
+  Serial.println("WiFi Status: " + String(WiFi.status()));
   int wifi_power = WiFi.RSSI();
   Serial.println("WiFi Signal: " + String(wifi_power) + " dBm");
 
@@ -153,22 +155,21 @@ void drawWiFiSignal(){
   (-60:-70) - Fair - Orange
   (-inf;-70)- Weak - Red
   DISCONNECTED     - Dark Grey
-  OTHER            - WHITE
   */
 
   int wifi_symbol_size = 4;
   int wifi_symbol_x = SCREEN_WIDTH - wifi_symbol_size - SCREEN_PADDING;
   int wifi_symbol_y = SCREEN_PADDING;
 
-  if (wifi_power >= -60) {
+  if (WiFi.status() != WL_CONNECTED) {
+    tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_DARKGREY);
+  } else if (wifi_power >= -60) {
     tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_GREEN);
   } else if (wifi_power >= -70) {
     tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_ORANGE);
-  } else if (wifi_power >= -80) {
+  } else if (wifi_power < -70) {
     tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_RED);
-  } else if (WiFi.status() != WL_CONNECTED) {
-    tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_DARKGREY);
-  } else{
+  } else {
     tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_WHITE);
   }
 }
@@ -710,6 +711,16 @@ void setup() {
 }
 
 void loop() {
+  if (millis() - last_wifi_refresh_time > 1000 * 5) { 
+    drawWiFiSignal();
+    last_wifi_refresh_time = millis();
+
+    if(WiFi.status() != WL_CONNECTED){
+      Serial.println("WiFi disconnected. Attempting to reconnect...");
+      WiFi.reconnect();
+    }
+  }
+
   if (needs_reauthorization) {
     refreshTokenRequest();
     if(needs_reauthorization){
@@ -747,15 +758,5 @@ void loop() {
     drawProgressBar(current_playback.progress_ms);
 
     last_playback_refresh_time = millis();
-  }
-
-  if (millis() - last_wifi_refresh_time > 1000 * 5) { 
-    drawWiFiSignal();
-    last_wifi_refresh_time = millis();
-
-    if(WiFi.status() != WL_CONNECTED){
-      Serial.println("WiFi disconnected. Attempting to reconnect...");
-      WiFi.reconnect();
-    }
   }
 }
