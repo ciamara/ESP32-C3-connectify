@@ -23,6 +23,7 @@ bool needs_reauthorization = true;
 unsigned long last_token_refresh_time = 0;
 unsigned long last_progress_refresh_time = 0;
 unsigned long last_playback_refresh_time = 0;
+unsigned long last_wifi_refresh_time = 0;
 
 struct playback_t {
   bool is_playing = false;
@@ -138,6 +139,38 @@ void drawAuthorizationScreen(){
   tft.drawString("Authorization", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 - 8 - TEXT_MARGIN, 1);
   tft.drawString("Required", SCREEN_WIDTH/2, SCREEN_HEIGHT/2, 1);
   tft.drawString("Check Serial Monitor", SCREEN_WIDTH/2, SCREEN_HEIGHT/2 + 16, 1);
+}
+
+void drawWiFiSignal(){
+  Serial.println("\n### Checking WiFi Signal Strength");
+  
+  int wifi_power = WiFi.RSSI();
+  Serial.println("WiFi Signal: " + String(wifi_power) + " dBm");
+
+  /*
+  WiFi Power Levels:
+  (-60;+inf)- Good - Green
+  (-60:-70) - Fair - Orange
+  (-inf;-70)- Weak - Red
+  DISCONNECTED     - Dark Grey
+  OTHER            - WHITE
+  */
+
+  int wifi_symbol_size = 4;
+  int wifi_symbol_x = SCREEN_WIDTH - wifi_symbol_size - SCREEN_PADDING;
+  int wifi_symbol_y = SCREEN_PADDING;
+
+  if (wifi_power >= -60) {
+    tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_GREEN);
+  } else if (wifi_power >= -70) {
+    tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_ORANGE);
+  } else if (wifi_power >= -80) {
+    tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_RED);
+  } else if (WiFi.status() != WL_CONNECTED) {
+    tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_DARKGREY);
+  } else{
+    tft.fillRect(wifi_symbol_x, wifi_symbol_y, wifi_symbol_size, wifi_symbol_size, TFT_WHITE);
+  }
 }
 
 // WiFi Functions
@@ -714,5 +747,15 @@ void loop() {
     drawProgressBar(current_playback.progress_ms);
 
     last_playback_refresh_time = millis();
+  }
+
+  if (millis() - last_wifi_refresh_time > 1000 * 5) { 
+    drawWiFiSignal();
+    last_wifi_refresh_time = millis();
+
+    if(WiFi.status() != WL_CONNECTED){
+      Serial.println("WiFi disconnected. Attempting to reconnect...");
+      WiFi.reconnect();
+    }
   }
 }
