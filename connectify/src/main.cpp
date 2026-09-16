@@ -15,6 +15,8 @@
 #include <TFT_eSPI.h>
 #include <SPI.h>
 #include <TJpg_Decoder.h>
+// Images
+#include "sleeping_cat.h"
 
 String AUTH_CODE;
 String ACCESS_TOKEN;
@@ -24,6 +26,7 @@ unsigned long last_token_refresh_time = 0;
 unsigned long last_progress_refresh_time = 0;
 unsigned long last_playback_refresh_time = 0;
 unsigned long last_wifi_refresh_time = 0;
+unsigned long sleep_start_time = 0;
 
 struct playback_t {
   bool is_playing = false;
@@ -51,6 +54,9 @@ playback_t current_playback;
 
 bool playback_changed = true;
 bool resume_pause_changed = true;
+
+uint8_t* sleeping_buffer = nullptr;
+int sleeping_buffer_length = 0;
 
 TFT_eSPI tft = TFT_eSPI();
 
@@ -82,8 +88,12 @@ void tjpgInitialization(){
 
 void drawPlaybackImage(){
   if (!current_playback.is_playing) return;
+
+  int image_x = SCREEN_WIDTH/2 - 32;
+  int image_y = SCREEN_HEIGHT/2 - 48;
+
   if (current_playback.artwork_buffer != nullptr && current_playback.artwork_length > 0) {
-    TJpgDec.drawJpg(SCREEN_WIDTH/2-32, SCREEN_HEIGHT/2-48, current_playback.artwork_buffer, current_playback.artwork_length);
+    TJpgDec.drawJpg(image_x, image_y, current_playback.artwork_buffer, current_playback.artwork_length);
   }
 }
 
@@ -98,7 +108,7 @@ void drawPlaybackState(){
 
   if(!current_playback.is_playing){
     tft.fillScreen(TFT_BLACK);
-    tft.drawString("Sleeping...", SCREEN_WIDTH/2, SCREEN_HEIGHT/2, 1);
+    tft.drawString("Sleeping", SCREEN_WIDTH/2, title_y, 1);
   }
   else{
     if(current_playback.currently_playing_type == "track"){
@@ -108,6 +118,60 @@ void drawPlaybackState(){
     else if(current_playback.currently_playing_type == "episode"){
       tft.drawString(current_playback.episode_name, SCREEN_WIDTH/2, title_y, 1);
     }
+  }
+}
+
+void drawSleepingScreen(){
+  if (current_playback.is_playing) {
+    sleep_start_time = 0;
+    return;
+  }
+
+  tft.setTextColor(TFT_WHITE, TFT_BLACK);
+  tft.setTextDatum(MC_DATUM);
+
+  int image_x = SCREEN_WIDTH / 2 - (SLEEPING_CAT_FRAME_WIDTH / 2);
+  int image_y = SCREEN_HEIGHT / 2 - (SLEEPING_CAT_FRAME_HEIGHT / 2) - 16;
+  int sleep_y = SCREEN_HEIGHT / 2 + 36;
+  int timer_y = SCREEN_HEIGHT / 2 + 36 + 8 + TEXT_MARGIN;
+
+  if (sleep_start_time == 0) {
+    sleep_start_time = millis();
+
+    int index = 0;
+    for (int y = 0; y < SLEEPING_CAT_FRAME_HEIGHT; y++) {
+      for (int x = 0; x < SLEEPING_CAT_FRAME_WIDTH; x++) {
+        uint32_t pixel32 = sleeping_cat_data[0][index++];
+        
+        uint8_t a = (pixel32 >> 24) & 0xFF;
+        uint8_t r = (pixel32 >> 16) & 0xFF;
+        uint8_t g = (pixel32 >> 8) & 0xFF;
+        uint8_t b = (pixel32) & 0xFF;
+
+        uint16_t color16 = tft.color565(r, g, b);
+        tft.drawPixel(image_x + x, image_y + y, color16);
+      }
+    }
+  }
+
+  tft.fillRect(0, sleep_y - 4, SCREEN_WIDTH, 8 + TEXT_MARGIN + 8, TFT_BLACK);
+  
+  if (millis() - sleep_start_time < 1000 * 60) {
+    tft.drawString("Sleeping", SCREEN_WIDTH/2, sleep_y, 1);
+  }
+  else if(millis() - sleep_start_time < 1000 * 60 * 60){
+    tft.drawString("Sleeping", SCREEN_WIDTH/2, sleep_y, 1);
+    if (millis() - sleep_start_time < 1000 * 60 * 2){
+      tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60) + " minute", SCREEN_WIDTH/2, timer_y, 1);
+    }
+    tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60) + " minutes", SCREEN_WIDTH/2, timer_y, 1);
+  }
+  else{
+    tft.drawString("Sleeping", SCREEN_WIDTH/2, sleep_y, 1);
+    if (millis() - sleep_start_time < 1000 * 60 * 60 * 2){
+      tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60 / 60) + " hour", SCREEN_WIDTH/2, timer_y, 1);
+    }
+    tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60 / 60) + " hours", SCREEN_WIDTH/2, timer_y, 1);
   }
 }
 
@@ -712,6 +776,7 @@ void setup() {
 }
 
 void loop() {
+  // WiFi Signal (5 seconds)
   if (millis() - last_wifi_refresh_time > 1000 * 5) { 
     drawWiFiSignal();
     last_wifi_refresh_time = millis();
@@ -722,6 +787,7 @@ void loop() {
     }
   }
 
+  // Token Refresh and Reauthorization
   if (needs_reauthorization) {
     refreshTokenRequest();
     if(needs_reauthorization){
@@ -733,17 +799,22 @@ void loop() {
     last_token_refresh_time = millis();
   }
 
+  // Playback Progress Bar (1 second) 
   if (millis() - last_progress_refresh_time > 1000) { 
-    current_playback.progress_ms += 1000;
-    drawProgressBar(current_playback.progress_ms);
+    if(current_playback.is_playing){
+      current_playback.progress_ms += 1000;
+      drawProgressBar(current_playback.progress_ms);
+    }
     last_progress_refresh_time = millis();
   }
 
+  // Token Refresh (30 minutes)
   if (millis() - last_token_refresh_time > 1000 * 60 * 30) { 
     refreshTokenRequest();
     last_token_refresh_time = millis();
   }
 
+  // Playback State (5 seconds)
   if (millis() - last_playback_refresh_time > 1000 * 5) { 
     getPlaybackState();
     printPlaybackState();
@@ -757,6 +828,7 @@ void loop() {
       resume_pause_changed = false;
     } 
     drawProgressBar(current_playback.progress_ms);
+    drawSleepingScreen();
 
     last_playback_refresh_time = millis();
   }
