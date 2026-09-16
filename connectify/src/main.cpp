@@ -164,25 +164,33 @@ void drawSleepingScreen(){
     if (millis() - sleep_start_time < 1000 * 60 * 2){
       tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60) + " minute", SCREEN_WIDTH/2, timer_y, 1);
     }
-    tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60) + " minutes", SCREEN_WIDTH/2, timer_y, 1);
+    else{
+      tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60) + " minutes", SCREEN_WIDTH/2, timer_y, 1);
+    }
   }
   else{
     tft.drawString("Sleeping", SCREEN_WIDTH/2, sleep_y, 1);
     if (millis() - sleep_start_time < 1000 * 60 * 60 * 2){
       tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60 / 60) + " hour", SCREEN_WIDTH/2, timer_y, 1);
     }
-    tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60 / 60) + " hours", SCREEN_WIDTH/2, timer_y, 1);
+    else{
+     tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60 / 60) + " hours", SCREEN_WIDTH/2, timer_y, 1);
+    }
   }
 }
 
 void drawProgressBar(long progress){
-  if(!current_playback.is_playing) return;
-
   int progress_bar_y = SCREEN_HEIGHT/2 + 64; // track_artist
   int progress_bar_width = progress * (SCREEN_WIDTH - 2 * SCREEN_PADDING) / current_playback.duration_ms; 
 
+  
+  if(!current_playback.is_playing) {
+    tft.fillRect(SCREEN_PADDING, progress_bar_y - 2, SCREEN_WIDTH - 2 * SCREEN_PADDING + 1, 5, TFT_BLACK); //not sure abot +1
+    return;
+  }
+
   //clear_bar
-  tft.fillRect(SCREEN_PADDING, progress_bar_y - 2, SCREEN_WIDTH - 2 * SCREEN_PADDING, 5, TFT_BLACK);
+  tft.fillRect(SCREEN_PADDING, progress_bar_y - 2, SCREEN_WIDTH - 2 * SCREEN_PADDING + 1, 5, TFT_BLACK);
 
   //duration_bar 
   tft.drawFastHLine(SCREEN_PADDING, progress_bar_y, SCREEN_WIDTH - 2 * SCREEN_PADDING, TFT_WHITE);
