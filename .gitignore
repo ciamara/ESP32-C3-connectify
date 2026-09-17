@@ -1,5 +1,0 @@
-*.cache_m
-*.cache_t
-
-connectify/config.h
-prototype/config.py
