@@ -131,7 +131,6 @@ void drawSleepingScreen(){
     sleep_start_time = 0;
     sleep_image_drawn = false;
     saveLastSleepTimestamp();
-    Serial.println("STOPPED SLEEPING NOW PLAYING !!!!!!!");
     return;
   }
 
