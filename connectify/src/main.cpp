@@ -1,3 +1,7 @@
+// Config with API keys and WiFi credentials
+#include "config.h"
+// Main Header file
+#include "main.h"
 // WiFi
 #include <WiFi.h>
 // HTTP Client
@@ -7,8 +11,6 @@
 #include <ArduinoJson.h>
 // POST and GET requests formatting
 #include <mbedtls/base64.h>
-// Config with API keys and WiFi credentials
-#include "config.h"
 // Saving variables to Flash memory
 #include <Preferences.h>
 // LCD
@@ -17,6 +19,8 @@
 #include <TJpg_Decoder.h>
 // Images
 #include "sleeping_cat.h"
+// Timestamps
+#include <time.h>
 
 String AUTH_CODE;
 String ACCESS_TOKEN;
@@ -27,6 +31,7 @@ unsigned long last_progress_refresh_time = 0;
 unsigned long last_playback_refresh_time = 0;
 unsigned long last_wifi_refresh_time = 0;
 unsigned long sleep_start_time = 0;
+bool sleep_image_drawn = false;
 
 struct playback_t {
   bool is_playing = false;
@@ -122,10 +127,15 @@ void drawPlaybackState(){
 }
 
 void drawSleepingScreen(){
-  if (current_playback.is_playing) {
+  if (current_playback.is_playing && resume_pause_changed) {
     sleep_start_time = 0;
+    sleep_image_drawn = false;
+    saveLastSleepTimestamp();
+    Serial.println("STOPPED SLEEPING NOW PLAYING !!!!!!!");
     return;
   }
+
+  if (current_playback.is_playing) return;
 
   tft.setTextColor(TFT_WHITE, TFT_BLACK);
   tft.setTextDatum(MC_DATUM);
@@ -136,8 +146,11 @@ void drawSleepingScreen(){
   int timer_y = SCREEN_HEIGHT / 2 + 36 + 8 + TEXT_MARGIN;
 
   if (sleep_start_time == 0) {
-    sleep_start_time = millis();
+    sleep_start_time = time(nullptr); 
+    saveLastSleepTimestamp();
+  }
 
+  if (sleep_image_drawn == 0){
     int index = 0;
     for (int y = 0; y < SLEEPING_CAT_FRAME_HEIGHT; y++) {
       for (int x = 0; x < SLEEPING_CAT_FRAME_WIDTH; x++) {
@@ -152,29 +165,32 @@ void drawSleepingScreen(){
         tft.drawPixel(image_x + x, image_y + y, color16);
       }
     }
+    sleep_image_drawn = true;
   }
 
   tft.fillRect(0, sleep_y - 4, SCREEN_WIDTH, 8 + TEXT_MARGIN + 8, TFT_BLACK);
   
-  if (millis() - sleep_start_time < 1000 * 60) {
+  unsigned long duration = time(nullptr) - sleep_start_time;
+
+  if (duration < 60) {
     tft.drawString("Sleeping", SCREEN_WIDTH/2, sleep_y, 1);
   }
-  else if(millis() - sleep_start_time < 1000 * 60 * 60){
+  else if(duration < 60 * 60){
     tft.drawString("Sleeping", SCREEN_WIDTH/2, sleep_y, 1);
-    if (millis() - sleep_start_time < 1000 * 60 * 2){
-      tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60) + " minute", SCREEN_WIDTH/2, timer_y, 1);
+    if (duration < 60 * 2){
+      tft.drawString("for " + String(duration / 60) + " minute", SCREEN_WIDTH/2, timer_y, 1);
     }
     else{
-      tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60) + " minutes", SCREEN_WIDTH/2, timer_y, 1);
+      tft.drawString("for " + String(duration / 60) + " minutes", SCREEN_WIDTH/2, timer_y, 1);
     }
   }
   else{
     tft.drawString("Sleeping", SCREEN_WIDTH/2, sleep_y, 1);
-    if (millis() - sleep_start_time < 1000 * 60 * 60 * 2){
-      tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60 / 60) + " hour", SCREEN_WIDTH/2, timer_y, 1);
+    if (duration < 60 * 60 * 2){
+      tft.drawString("for " + String(duration / 60 / 60) + " hour", SCREEN_WIDTH/2, timer_y, 1);
     }
     else{
-     tft.drawString("for " + String((millis() - sleep_start_time) / 1000 / 60 / 60) + " hours", SCREEN_WIDTH/2, timer_y, 1);
+     tft.drawString("for " + String(duration / 60 / 60) + " hours", SCREEN_WIDTH/2, timer_y, 1);
     }
   }
 }
@@ -264,6 +280,15 @@ void connectToWiFi() {
   
   Serial.print("IP Address: ");
   Serial.println(WiFi.localIP());
+}
+
+void syncTimeNTP() {
+  configTime(0, 0, "pool.ntp.org", "time.nist.gov");
+  time_t now = time(nullptr);
+  while (now < 100000) { 
+    delay(500); 
+    now = time(nullptr); 
+  }
 }
 
 // Spotify API Functions
@@ -726,6 +751,34 @@ void saveSpotifyTokens(){
   preferences.end();
 }
 
+void loadLastSleepTimestamp(){
+  Serial.println("\n### Loading Last Sleep Timestamp");
+  Preferences preferences;
+
+  preferences.begin("sleep-timestamp", true);
+
+  sleep_start_time = preferences.getULong("sleep_start", 0);
+
+  Serial.print("Loaded last sleep timestamp: ");
+  Serial.println(sleep_start_time);
+
+  preferences.end();
+}
+
+void saveLastSleepTimestamp(){
+  Serial.println("\n### Saving Last Sleep Timestamp");
+  Preferences preferences;
+
+  preferences.begin("sleep-timestamp", false);
+
+  preferences.putULong("sleep_start", sleep_start_time);
+
+  Serial.print("Saved last sleep timestamp: ");
+  Serial.println(sleep_start_time);
+
+  preferences.end();
+}
+
 // Debug Functions
 
 void printPlaybackState(){
@@ -778,9 +831,13 @@ void setup() {
 
   tjpgInitialization();
   tftInitialization();
+
   connectToWiFi();
+  syncTimeNTP();
   tft.fillScreen(TFT_BLACK);
+
   loadSpotifyTokens();
+  loadLastSleepTimestamp();
 }
 
 void loop() {
@@ -831,6 +888,7 @@ void loop() {
       fetchPlaybackImage();
       drawPlaybackImage();
       drawPlaybackState();
+      drawSleepingScreen();
       
       playback_changed = false;
       resume_pause_changed = false;
